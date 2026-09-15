@@ -89,3 +89,11 @@ See [ARCHITECTURE.md](ARCHITECTURE.md), [SCHEMA.md](SCHEMA.md), [REDUCERS.md](RE
 ## License
 
 Software source: **PolyForm Noncommercial 1.0.0** — see [LICENSE](LICENSE). Commercial use, hosting, deployment, distribution, resale, or incorporation into a commercial product/service requires a separate written license — see [COMMERCIAL.md](COMMERCIAL.md). Third-party dependency terms are recorded in [DEPENDENCIES.md](DEPENDENCIES.md).
+
+## License and permitted use
+
+The software is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+Individuals, hobbyists, students, independent researchers, educators, nonprofits, and community projects are welcome to use, modify, and share the software for noncommercial purposes. See [USE-POLICY.md](USE-POLICY.md).
+
+Commercial use requires a separate written license. See [COMMERCIAL.md](COMMERCIAL.md).
