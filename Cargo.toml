@@ -1,0 +1,25 @@
+[package]
+name = "gradient-space-time"
+version = "0.1.0"
+edition = "2021"
+license = "PolyForm-NC-1.0.0"
+license-file = "LICENSE"
+description = "SpacetimeDB persistence, trajectory, query, and live-subscription layer for codec-valid Vector13D states"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# TODO: pin the exact SpacetimeDB SDK version and verify attribute syntax
+# (table/reducer macros, Timestamp type, identity type) against the pinned
+# SDK docs and examples before first build.
+# spacetimedb = { version = "..." }
+
+# TODO: decide codec dependency strategy (see DEPENDENCIES.md):
+#   a) git dependency on alamort-sun/gradient-codec vector13d crate, or
+#   b) local type mirror + content-hash verification at insert time.
+# serde = { version = "1.0", features = ["derive"] }
+# serde_json = "1.0"
+
+# NOTE: this scaffold intentionally does not compile until the SDK version
+# is pinned and the TODOs in src/ are resolved. See README roadmap.
