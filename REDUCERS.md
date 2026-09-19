@@ -1,62 +1,145 @@
-# REDUCERS
+# Reducers — gradient-space-time
 
-> Reducers are the transaction boundary and the only mechanism for table mutation. Deterministic, bounded, side-effect-free.
+Reducers are the transaction boundary and the **only** mechanism for table mutation. They are deterministic, bounded, and side-effect-free.
 
-## Never inside reducers
+## submit_validated_state
 
-```text
-LLM API calls
-Network I/O
-Hugging Face downloads
-GPU jobs
-JEPA training
-Long-running inference
-Filesystem work
-Unbounded historical scans
-Global clustering across unrestricted history
-Non-replayable hidden side effects
+Accept canonical state + codec validation receipt.
+
+```rust
+#[reducer]
+pub fn submit_validated_state(
+    ctx: &ReducerContext,
+    trajectory_id: u64,
+    sequence_number: u64,
+    payload: String,          // canonical Vector15D (serialized JSON)
+    content_hash: String,    // sha256 of payload
+    codec_version: String,    // codec commit hash
+    schema_version: String,
+    validation_receipt: String,
+    source_type: SourceType,
+)
 ```
 
-Those belong in clients or external workers that subscribe to durable request/event tables and later submit deterministic results through reducers.
+Inserts into `gradient_state_events` and updates `latest_trajectory_state`.
 
-## Reducers
+## record_transition
 
-### submit_validated_state
+Create explicit transition metadata after validation.
 
-Accepts a canonical state + supplied codec validation receipt. Revalidates or verifies according to authority policy. Appends a state event. Links predecessor / trajectory when valid. Updates bounded current and summary views.
+```rust
+#[reducer]
+pub fn record_transition(
+    ctx: &ReducerContext,
+    trajectory_id: u64,
+    from_state_id: u64,
+    to_state_id: u64,
+)
+```
 
-### record_transition
+Inserts into `state_transitions`.
 
-Creates explicit transition metadata after validation: predecessor, successor, duration, changed fields, domain-wall before/after, gauge-coupling before/after.
+## record_jepa_prediction
 
-### record_jepa_prediction
+Store non-authoritative prediction, confidence.
 
-Stores a non-authoritative model prediction: confidence, model version, input-state hash. The row is marked non-authoritative at write time; predictions never validate geometry.
+```rust
+#[reducer]
+pub fn record_jepa_prediction(
+    ctx: &ReducerContext,
+    input_state_hash: String,
+    model_version: String,
+    predicted_representation: String,
+    confidence: f64,
+    uncertainty: f64,
+)
+```
 
-### enqueue_generation_request
+Inserts into `jepa_predictions`. The `is_authoritative` field is always `false`.
 
-Creates a durable request with budget ceiling and valid input state. Workers subscribe to this table; no in-memory dispatch.
+## enqueue_generation_request
 
-### record_generation_result
+Create durable request with budget ceiling.
 
-Receives a result from an outside worker. Validates any proposed Vector13D state through gradient-codec. Records accepted, rerouted, abstained, or rejected.
+```rust
+#[reducer]
+pub fn enqueue_generation_request(
+    ctx: &ReducerContext,
+    input_state_id: u64,
+    budget_ceiling: f64,
+    latency_requirement_ms: Option<u32>,
+    request_type: String,
+)
+```
 
-### compact_trajectory
+Inserts into `generation_requests` with status "pending".
 
-Produces a reproducible compaction record and summary. Never destroys authoritative provenance without an explicit retention policy.
+## record_generation_result
 
-### update_trajectory_summary
+Receive worker result. Validate through codec.
 
-Updates bounded materialized indicators: entropy delta, ozone-buffer movement, torsion movement, domain-wall transition count, coupling transition count.
+```rust
+#[reducer]
+pub fn record_generation_result(
+    ctx: &ReducerContext,
+    request_id: u64,
+    generated_text: Option<String>,
+    proposed_state: Option<String>,
+    validation_status: GenerationStatus,
+    validation_receipt: String,
+)
+```
 
-## Analysis reducers (planned)
+Inserts into `generation_results`. If the result was accepted and has a proposed state, it should be persisted via `submit_validated_state` after codec validation. TODO: Wire codec validation.
 
-Beyond persistence, bounded reducers for structured queries:
+## compact_trajectory
 
-- **Trajectory reducer** — compress state sequences into transition patterns
-- **Domain reducer** — aggregate by domain_wall regime (Linked / Broken / Gradient)
-- **Energy reducer** — compute energy flux from ozone_buffer deltas over time
-- **Entropy reducer** — track entropy change trajectories (n1→n2 reference: >55% drop)
-- **Torsion reducer** — track skew evolution (torsion → 0 = upright axis)
+Reproducible compaction record and summary.
 
-All analysis reducers must remain bounded: windowed or cursor-based, never unbounded historical scans.
+```rust
+#[reducer]
+pub fn compact_trajectory(
+    ctx: &ReducerContext,
+    trajectory_id: u64,
+    states_before: u64,
+    states_after: u64,
+    retained_summary: String,
+    expired_summary: String,
+)
+```
+
+Inserts into `compaction_records`. The compaction itself must be deterministic and reproducible.
+
+## update_trajectory_summary
+
+Bounded materialized indicators.
+
+```rust
+#[reducer]
+pub fn update_trajectory_summary(
+    ctx: &ReducerContext,
+    trajectory_id: u64,
+    state_count: u64,
+    avg_entropy: f64,
+    avg_coherence: f64,
+    domain_wall: DomainWall,
+    gauge_coupling: GaugeCoupling,
+    avg_hue: f64,
+)
+```
+
+Upserts into `trajectory_summaries`.
+
+## What NEVER Goes Inside Reducers
+
+- LLM API calls
+- Network I/O
+- Hugging Face downloads
+- GPU jobs
+- JEPA training
+- Long-running inference
+- Filesystem work
+- Unbounded historical scans
+- Non-replayable hidden side effects
+
+External workers handle all of the above. Reducers only commit validated results.

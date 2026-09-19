@@ -1,167 +1,198 @@
-# SCHEMA
-
-> Append-only state events with explicit provenance. Never mutable opaque state blobs.
-
-## Schema philosophy
-
-- Favor **append-only state events** and explicit provenance over mutable state.
-- Every persisted valid state carries:
-
-```text
-state ID · trajectory ID or predecessor reference · logical sequence number
-· event timestamp · codec version/commit · schema version
-· canonical payload · content hash
-· validation outcome · validation receipt / reason code
-· source type / provenance
-```
-
-- `DomainWall` and `GaugeCoupling` are **typed enum-safe values**, not free-form strings, at the codec boundary.
-- Strongly typed SpacetimeDB table rows. No assumption of PostgreSQL JSONB syntax or semantics — SpacetimeDB-native types only.
-- TODO: verify exact SpacetimeDB type mappings (timestamp, hash, array, enum support) against the pinned SDK version before first build.
+# Schema — gradient-space-time
 
 ## Tables
 
 ### gradient_state_events
 
-Immutable codec-valid Vector13D state events.
+Immutable codec-valid Vector15D state events.
 
-```text
-state_id            identity
-trajectory_id       reference to trajectories (nullable for unassigned)
-predecessor_id      reference to prior state event (nullable for roots)
-sequence_number     logical order within trajectory
-event_timestamp     time of observation
-codec_commit        pinned gradient-codec commit (e.g. 9f4b4d5)
-schema_version      this schema's version
-payload             canonical serialized Vector13D
-content_hash        hash of canonical payload
-validation_outcome  accepted | rejected
-receipt_id          reference to validation_receipts
-source_type         stt | manual | replay | worker | baseline
-```
+### Vector15D payload (codec law)
+
+Persisted `payload` JSON is **Vector15D**. Fields 1–13 retain prior semantics. Fields 14–15:
+
+| Field | Semantics |
+|-------|-----------|
+| `magnetic_north` | Universal polar pre-stress (north) — shared by all shells |
+| `magnetic_south` | Universal polar pre-stress (south) — shared by all shells |
+
+Poles are **not** seat-owned. Anaseos ivory-blue is DECLARED colour/spectrum only. Serde defaults missing poles to `0.0`. Prefer `codec_schema_version` / `schema_version` = `v15d`.
+
+
+
+| Column | Type | Description |
+|--------|------|-------------|
+| state_id | u64 (PK) | Unique state ID |
+| trajectory_id | u64 | Trajectory ID |
+| sequence_number | u64 | Logical sequence within trajectory |
+| event_timestamp | Timestamp | When event was committed |
+| codec_version | String | Codec commit hash |
+| schema_version | String | Schema version |
+| payload | String | Canonical Vector15D (serialized JSON) |
+| content_hash | String | sha256 of payload |
+| validation_outcome | ValidationOutcome | Accepted / Rerouted / Abstained / Rejected |
+| validation_receipt | String | Reason code / receipt |
+| source_type | SourceType | Observed / Generated / Predicted / Synthetic / Replayed |
 
 ### state_transitions
 
 Explicit x_t → x_t+1 records.
 
-```text
-transition_id       identity
-from_state_id       reference to gradient_state_events
-to_state_id         reference to gradient_state_events
-transition_time     timestamp of the transition
-duration_ms         time between observations
-changed_fields      list of field names that changed
-domain_wall_before  Linked | Broken | Gradient
-domain_wall_after   Linked | Broken | Gradient
-gauge_before        Static | Spinning | Oscillating
-gauge_after         Static | Spinning | Oscillating
-receipt_id          validation reference
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| transition_id | u64 (PK) | Unique transition ID |
+| from_state_id | u64 | Predecessor state |
+| to_state_id | u64 | Successor state |
+| trajectory_id | u64 | Trajectory ID |
+| timestamp | Timestamp | When transition was recorded |
 
 ### trajectories
 
-Metadata and root/terminal references for ordered histories. Never depends solely on unbounded arrays of state IDs.
+Metadata and root/terminal references.
 
-```text
-trajectory_id       identity
-root_state_id       first state event
-terminal_state_id   latest state event (bounded materialized reference)
-started_at          timestamp
-ended_at            timestamp (nullable while open)
-label               e.g. 'n1-baseline', 'shower', 'stt-demo'
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| trajectory_id | u64 (PK) | Trajectory ID |
+| root_state_id | Option\<u64\> | First state (None if not yet set) |
+| terminal_state_id | Option\<u64\> | Last state (None if open) |
+| is_closed | bool | Whether trajectory is closed |
+| created_at | Timestamp | Creation time |
+| closure | f64 | Cycle completeness (0.0 - 1.0) |
 
 ### validation_receipts
 
-```text
-receipt_id          identity
-codec_commit        pinned codec version
-outcome             accepted | rejected
-reason_code         invariant / rule identifier (TODO: enumerate against codec source)
-canonical_hash      content hash of the validated payload
-validated_at        timestamp
-source              provenance of the validation call
-```
+Codec commit/version, outcome, invariant info.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| receipt_id | u64 (PK) | Receipt ID |
+| state_id | u64 | State validated |
+| codec_commit | String | Codec commit hash |
+| codec_schema_version | String | Codec schema version |
+| is_valid | bool | Whether validation passed |
+| reason_code | String | Reason code |
+| timestamp | Timestamp | When validated |
 
 ### latest_trajectory_state
 
-Optional materialized current-state view for fast live consumers.
+Optional materialized current-state view.
 
-```text
-trajectory_id       identity (one row per trajectory)
-state_id            reference to current gradient_state_events
-as_of               materialization timestamp
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| trajectory_id | u64 (PK) | Trajectory ID |
+| state_id | u64 | Latest state ID |
+| content_hash | String | Content hash of latest state |
+| updated_at | Timestamp | When updated |
 
 ### trajectory_summaries
 
-Bounded / materialized summaries.
+Bounded materialized summaries.
 
-```text
-trajectory_id       identity
-entropy_delta       first→latest entropy change
-ozone_band          energy band summary
-torsion_motion      skew evolution summary
-domain_transitions  count of domain_wall changes
-coupling_transitions count of gauge_coupling changes
-updated_at          materialization timestamp
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| trajectory_id | u64 (PK) | Trajectory ID |
+| state_count | u64 | Number of states |
+| avg_entropy | f64 | Average entropy |
+| avg_coherence | f64 | Average coherence |
+| domain_wall | DomainWall | Connection state |
+| gauge_coupling | GaugeCoupling | Rotation mode |
+| avg_hue | f64 | Average hue |
+| updated_at | Timestamp | When updated |
 
 ### jepa_predictions
 
 Non-authoritative model predictions.
 
-```text
-prediction_id       identity
-model_version       JEPA artifact manifest identifier
-input_state_hash    content hash of the input state
-predicted_payload   predicted representation (latent or state)
-confidence          model-reported confidence
-uncertainty         model-reported uncertainty
-authoritative       always false — predictions never validate geometry
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| prediction_id | u64 (PK) | Prediction ID |
+| input_state_hash | String | Input state hash |
+| model_version | String | Model version |
+| predicted_representation | String | Predicted state (serialized) |
+| confidence | f64 | Confidence (0.0 - 1.0) |
+| uncertainty | f64 | Uncertainty estimate |
+| is_authoritative | bool | Always false |
+| timestamp | Timestamp | When predicted |
 
 ### routing_decisions
 
-```text
-decision_id         identity
-request_id          linkage to generation_requests
-selected_expert     provider/model selected
-budget_snapshot     ceiling + spent at decision time
-rationale_code      MoE rationale identifier
-outcome             accepted | rerouted | deferred | abstained | rejected
-```
+MoE decision records.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| routing_id | u64 (PK) | Routing ID |
+| selected_expert | String | Selected provider |
+| budget_snapshot | String | Budget state snapshot |
+| rationale_code | String | Routing rationale |
+| request_id | Option\<u64\> | Generation request linkage |
+| result_outcome | String | Result outcome |
+| timestamp | Timestamp | When routed |
 
 ### generation_requests
 
 Durable work-intent queue for external workers.
 
-```text
-request_id          identity
-input_state_id      reference to gradient_state_events
-intent              generation | inference | analysis
-budget_ceiling_usd  max spend authorized
-created_at          timestamp
-status              queued | claimed | completed | expired
-```
+| Column | Type | Description |
+|--------|------|-------------|
+| request_id | u64 (PK) | Request ID |
+| input_state_id | u64 | Input state |
+| budget_ceiling | f64 | Budget ceiling (USD) |
+| latency_requirement_ms | Option\<u32\> | Latency requirement |
+| request_type | String | Request type |
+| status | String | pending / in_progress / complete / failed |
+| created_at | Timestamp | When created |
 
 ### generation_results
 
-```text
-result_id           identity
-request_id          linkage to generation_requests
-worker_id           provenance of the worker
-result_payload      worker output
-validation_status   accepted | rerouted | abstained | rejected
-receipt_id          validation reference
-```
+External result records with codec validation status.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| result_id | u64 (PK) | Result ID |
+| request_id | u64 | Original request |
+| generated_text | Option\<String\> | Generated text |
+| proposed_state | Option\<String\> | Proposed output state |
+| validation_status | GenerationStatus | Accepted / Rerouted / Abstained / Rejected |
+| validation_receipt | String | Validation receipt |
+| completed_at | Timestamp | When completed |
 
 ### compaction_records
 
-```text
-compaction_id       identity
-trajectory_id       affected trajectory
-action              reduced | retained | expired | summarized
-details             reproducible description of what was done
-provenance          references needed to reproduce the compaction
-```
+What was reduced, retained, expired, or summarized.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| compaction_id | u64 (PK) | Compaction ID |
+| trajectory_id | u64 | Trajectory compacted |
+| states_before | u64 | States before compaction |
+| states_after | u64 | States after compaction |
+| retained_summary | String | What was retained |
+| expired_summary | String | What was expired |
+| timestamp | Timestamp | When compacted |
+
+## Enums
+
+### DomainWall
+`Linked` | `Broken` | `Gradient`
+
+### GaugeCoupling
+`Static` | `Spinning` | `Oscillating`
+
+### ValidationOutcome
+`Accepted` | `Rerouted` | `Abstained` | `Rejected`
+
+### SourceType
+`Observed` | `Generated` | `Predicted` | `Synthetic` | `Replayed`
+
+### GenerationStatus
+`Accepted` | `Rerouted` | `Abstained` | `Rejected`
+
+## Personality ledgers (live on gray-fog maincloud)
+
+Agent personality for jelle seats is **not** stored in this scaffold module yet.
+It lives on SpacetimeDB **maincloud** database `gray-fog` (sun-dance memory):
+
+- **Federated** — keyed by `seat_id`
+- **Timestamped** — `agent_memory_5d` append history
+- **Lossy mutable** — `agent_memory_4d` replace/merge spine + `agent_memory_6d` fading cache
+
+Jelle-serve pulls/pushes `personality:<seat>` there. Codec-valid Vector15D trajectories remain this repo's concern.
