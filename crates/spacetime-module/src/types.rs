@@ -1,44 +1,19 @@
 //! Plane-safe column types for the A2 four-object set (Saraswati).
 //!
-//! SpacetimeDB storage seam: opaque u64 / hex-string digests stand in for
-//! codec newtypes (`LeaseId`, `ActDigest`, …) until those land in
-//! `gradient-codec`. Do not reintroduce biography master keys, request-chain
-//! keys, provider identity, or raw egress text on these types.
+//! Authority: workspace path dep `gradient-plane` (from `../gradient-codec/plane`)
+//! with `spacetimedb` feature for column derive. No bare u64/hex String stand-ins
+//! on the four plane tables — see `tables.rs`.
+//!
+//! Do not reintroduce biography master keys, request-chain keys, provider
+//! identity, or raw egress text on these types.
 
-use spacetimedb::SpacetimeType;
-
-/// Closure disposition for an act (Saraswati A2 `ClosureCode`).
-///
-/// Former `ValidationOutcome` / `GenerationStatus` collapsed here (B1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, SpacetimeType)]
-#[sats(name = "ClosureCode")]
-pub enum ClosureCode {
-    #[default]
-    Accepted,
-    Rerouted,
-    Abstained,
-    Rejected,
-}
+pub use gradient_plane::{
+    require_digest_hex, ActDigest, CapsuleDigest, ClosureCode, LeaseId, ManifestId,
+    PolicyVersion, ReceiptId, SecurityEpoch, SuppressionSpec, Window, DIGEST_HEX_LEN,
+};
 
 /// Codec schema version label (geometry payloads still use v15d).
 pub const CODEC_SCHEMA_VERSION: &str = "v15d";
-
-/// Hex-encoded sha256 digest length (capsule / act digests).
-pub const DIGEST_HEX_LEN: usize = 64;
-
-/// Reject digests that are not lowercase/uppercase hex sha256.
-pub fn require_digest_hex(label: &str, digest: &str) -> Result<(), String> {
-    if digest.len() != DIGEST_HEX_LEN {
-        return Err(format!(
-            "{label}: expected {DIGEST_HEX_LEN}-char hex digest, got len {}",
-            digest.len()
-        ));
-    }
-    if !digest.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(format!("{label}: digest must be hexadecimal"));
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -48,6 +23,7 @@ mod tests {
     fn digest_hex_accepts_sha256() {
         let d = "a".repeat(64);
         require_digest_hex("act_digest", &d).expect("hex ok");
+        ActDigest::from_hex(d).expect("act");
     }
 
     #[test]
@@ -78,6 +54,44 @@ mod tests {
                     t.starts_with(&col) || t.starts_with(&param)
                 }),
                 "{label} must not declare column/param {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn tables_use_plane_newtypes_not_bare_standins() {
+        let tables = include_str!("tables.rs");
+        // Banned bare stand-in column types on the A2 set.
+        for needle in [
+            "pub lease_id: u64",
+            "pub lease_ref: u64",
+            "pub receipt_id: u64",
+            "pub manifest_id: u64",
+            "pub epoch: u64",
+            "pub policy_version: u32",
+            "pub act_digest: String",
+            "pub capsule_digest: String",
+            "pub suppression_spec: String",
+        ] {
+            assert!(
+                !tables.contains(needle),
+                "tables.rs still has stand-in `{needle}` — use gradient-plane newtypes"
+            );
+        }
+        for needle in [
+            "LeaseId",
+            "ActDigest",
+            "CapsuleDigest",
+            "ReceiptId",
+            "ManifestId",
+            "PolicyVersion",
+            "SecurityEpoch",
+            "SuppressionSpec",
+            "Window",
+        ] {
+            assert!(
+                tables.contains(needle),
+                "tables.rs should reference plane newtype {needle}"
             );
         }
     }

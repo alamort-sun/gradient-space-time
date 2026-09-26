@@ -10,7 +10,12 @@ All biography reducers (`submit_validated_state`, `record_transition`,
 `trajectory_id`.
 
 Timestamps other than `issued_at` / `closed_at` / `emitted_at` (taken from
-`ctx.timestamp`) arrive as micros-since-unix-epoch arguments.
+`ctx.timestamp`) arrive as micros-since-unix-epoch arguments (or via
+`Window.start_micros`).
+
+Args use `gradient-plane` newtypes (`LeaseId`, `ActDigest`, `CapsuleDigest`,
+`PolicyVersion`, `SecurityEpoch`, `ReceiptId`, `ManifestId`, `Window`,
+`SuppressionSpec`, `ClosureCode`).
 
 ## issue_active_lease
 
@@ -20,10 +25,10 @@ Issue an `ActiveLease` bound to a capsule digest (no capsule bytes on plane).
 #[reducer]
 pub fn issue_active_lease(
     ctx: &ReducerContext,
-    capsule_digest: String,       // 64-char hex sha256
-    policy_version: u32,
-    epoch: u64,
-    expires_at_micros: i64,       // must be > ctx.timestamp
+    capsule_digest: CapsuleDigest,   // 64-char hex sha256 (validated)
+    policy_version: PolicyVersion,
+    epoch: SecurityEpoch,
+    expires_at_micros: i64,          // must be > ctx.timestamp
 ) -> Result<(), String>
 ```
 
@@ -37,10 +42,10 @@ Issue a single-use `SignalingGrant` for one act under an existing lease.
 #[reducer]
 pub fn issue_signaling_grant(
     ctx: &ReducerContext,
-    act_digest: String,           // 64-char hex sha256
-    lease_ref: u64,               // must exist in active_leases
-    policy_version: u32,
-    epoch: u64,
+    act_digest: ActDigest,
+    lease_ref: LeaseId,              // must exist in active_leases
+    policy_version: PolicyVersion,
+    epoch: SecurityEpoch,
     expires_at_micros: i64,
 ) -> Result<(), String>
 ```
@@ -55,9 +60,9 @@ Append a `ClosureReceipt` for a closed act (no text / state / trajectory).
 #[reducer]
 pub fn record_closure_receipt(
     ctx: &ReducerContext,
-    act_digest: String,
+    act_digest: ActDigest,
     code: ClosureCode,
-    epoch: u64,
+    epoch: SecurityEpoch,
     retention_until_micros: i64,
 ) -> Result<(), String>
 ```
@@ -73,11 +78,10 @@ the suppression floor (no rare joinable aggregate).
 #[reducer]
 pub fn emit_notary_manifest(
     ctx: &ReducerContext,
-    window_start_micros: i64,
-    window_len_secs: u64,
+    window: Window,                  // start_micros + len_secs (> 0)
     cohort_count: u32,
     suppression_floor: u32,
-    suppression_spec: String,
+    suppression_spec: SuppressionSpec,
     ttl_expires_micros: i64,
 ) -> Result<(), String>
 ```
@@ -89,7 +93,7 @@ Inserts into `notary_manifests`.
 `validation::prepare_validated_payload` remains for Vector15D deserialize →
 `validate` → sha256. It is **not** wired to a plane biography insert anymore;
 callers preparing capsule content or act commitments reuse it. Plane reducers
-above only check digest hex shape.
+re-validate digest hex via `ActDigest` / `CapsuleDigest::from_hex`.
 
 ## What NEVER Goes Inside Reducers
 

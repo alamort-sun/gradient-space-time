@@ -21,4 +21,6 @@ tracing = "0.1"
 # Single source of truth for the canonical Vector15D / DomainWall / GaugeCoupling.
 # Every core (jelle, space-time) must reference the codec's types — never a local copy.
 vecGradient = { path = "../gradient-codec/vecGradient" }
+# Saraswati A2 plane-safe newtypes (LeaseId, ActDigest, …).
+gradient-plane = { path = "../gradient-codec/plane", features = ["spacetimedb"] }
 sha2 = "0.10"

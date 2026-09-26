@@ -36,3 +36,11 @@
 - [✓] gradient-codec / vecGradient documented pin **`359d00c`** via path dependency in workspace + `crates/spacetime-module/Cargo.toml`. DomainWall/GaugeCoupling re-exported from codec — no local copy remains.
 - [ ] Verify SpacetimeDB SDK API surface matches the reducer signatures
 - [ ] Record all transitive dependency licenses (unchecked — do not invent an audit)
+
+## gradient-plane (A2 newtypes)
+
+- Path: `../gradient-codec/plane` with feature `spacetimedb`
+- Authority for `LeaseId`, `ActDigest`, `CapsuleDigest`, `PolicyVersion`,
+  `SecurityEpoch`, `ReceiptId`, `ManifestId`, `Window`, `SuppressionSpec`,
+  `ClosureCode` — replaces prior u64/hex String stand-ins on the four plane tables.
+

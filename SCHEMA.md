@@ -8,10 +8,9 @@ Authority: `agent/specs/p1-codec-schema-lane-saraswati.md` §2–§3;
 `agent/specs/susano-dry-audit-v13.md` (delete joinable fields; do not sprout
 object-types on the same join key).
 
-Storage stand-ins: opaque `u64` / hex digests until codec newtypes
-(`LeaseId`, `ActDigest`, `ReceiptId`, `ManifestId`, …) land in
-`gradient-codec`. Equality is purpose-scoped (`lease_ref` / `act_digest`) —
-there is no master key.
+Column types: `gradient-plane` newtypes from `../gradient-codec/plane`
+(path dep, `spacetimedb` feature). Equality is purpose-scoped
+(`lease_ref` / `act_digest`) — there is no master key.
 
 ## Plane tables (4)
 
@@ -22,10 +21,10 @@ once issued. No trajectory content, no principal, no seat.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| lease_id | u64 (PK) | Opaque lease id (never reused) |
-| capsule_digest | String | sha256 hex of capsule content — binds without storing |
-| policy_version | u32 | Monotonic policy version |
-| epoch | u64 | Fenced security epoch |
+| lease_id | LeaseId (PK) | Opaque lease id (never reused) |
+| capsule_digest | CapsuleDigest | sha256 hex of capsule content — binds without storing |
+| policy_version | PolicyVersion | Monotonic policy version |
+| epoch | SecurityEpoch | Fenced security epoch |
 | issued_at | Timestamp | Issue time |
 | expires_at | Timestamp | Mandatory expiry — no perpetual leases |
 
@@ -38,10 +37,10 @@ Authorization for exactly one external signaling act. Digest-family only.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| act_digest | String (PK) | sha256 hex over normalized act commitment |
-| lease_ref | u64 | Lease this act serves |
-| policy_version | u32 | Policy version |
-| epoch | u64 | Security epoch |
+| act_digest | ActDigest (PK) | sha256 hex over normalized act commitment |
+| lease_ref | LeaseId | Lease this act serves |
+| policy_version | PolicyVersion | Policy version |
+| epoch | SecurityEpoch | Security epoch |
 | issued_at | Timestamp | Issue time |
 | expires_at | Timestamp | Single-use horizon |
 
@@ -53,10 +52,10 @@ Append-only, bounded-retention record that an act closed with a code.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| receipt_id | u64 (PK) | Opaque receipt id |
-| act_digest | String | What closed — bound, not described |
+| receipt_id | ReceiptId (PK) | Opaque receipt id |
+| act_digest | ActDigest | What closed — bound, not described |
 | code | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
-| epoch | u64 | Security epoch |
+| epoch | SecurityEpoch | Security epoch |
 | closed_at | Timestamp | Close time |
 | retention_until | Timestamp | Bounded retention deadline |
 
@@ -70,12 +69,11 @@ Compaction history folds in as manifest lines + tombstones (TODO), not a
 
 | Column | Type | Description |
 |--------|------|-------------|
-| manifest_id | u64 (PK) | Fresh id per window (never reused) |
-| window_start | Timestamp | Window start |
-| window_len_secs | u64 | Window length (R3 default 86400) |
+| manifest_id | ManifestId (PK) | Fresh id per window (never reused) |
+| window | Window | `{ start_micros, len_secs }` (R3 default len 86400) |
 | cohort_count | u32 | Suppressed below floor at emission |
 | suppression_floor | u32 | R3 floor (100) |
-| suppression_spec | String | Rare-category / timing / joinability notes |
+| suppression_spec | SuppressionSpec | Rare-category / timing / joinability notes |
 | emitted_at | Timestamp | Emission time |
 | ttl_expires | Timestamp | Deletion-complete deadline (R3 external TTL 604800) |
 
@@ -84,7 +82,8 @@ Compaction history folds in as manifest lines + tombstones (TODO), not a
 ### ClosureCode
 `Accepted` | `Rerouted` | `Abstained` | `Rejected`
 
-(Unified former `ValidationOutcome` / `GenerationStatus`.)
+(Unified former `ValidationOutcome` / `GenerationStatus`; defined in
+`gradient-plane`, re-exported from `types`.)
 
 ## Deleted biography set (disposition)
 
@@ -108,19 +107,15 @@ Compaction history folds in as manifest lines + tombstones (TODO), not a
 
 1. **Capsule crate / runtime** — holds state events, transitions, JEPA,
    raw egress under a lease; plane only stores `capsule_digest`.
-2. **Codec newtypes** — `LeaseId` / `ActDigest` / `PolicyVersion` /
-   `SecurityEpoch` / `ReceiptId` / `ManifestId` / `Window` /
-   `SuppressionSpec` in `gradient-codec` (space-time currently uses
-   storage stand-ins).
-3. **Epoch root fencing** — reject writes whose `epoch` ≠ current root.
-4. **Lease consume ledger** — no-rewind consume/expiry rows keyed by
+2. **Epoch root fencing** — reject writes whose `epoch` ≠ current root.
+3. **Lease consume ledger** — no-rewind consume/expiry rows keyed by
    `lease_id` (not a mutable field on `ActiveLease`).
-5. **Manifest tombstones / deletion-complete events** — R3 deletion
+4. **Manifest tombstones / deletion-complete events** — R3 deletion
    recorded, not silent drop.
-6. **B2 dual-write** — legacy frozen → readers cut over → drop (precondition:
+5. **B2 dual-write** — legacy frozen → readers cut over → drop (precondition:
    pins + single canonical module tree; tree drift already resolved).
-7. **A5 CI** — deny-list scan for `trajectory_id`, `trace_id`,
-   `prompt_hash`, `generated_text` on plane tables.
+6. **A5 CI** — deny-list scan for `trajectory_id`, `trace_id`,
+   `prompt_hash`, `generated_text` on plane tables (landed; keep in lockstep).
 
 ## Personality ledgers (live on gray-fog maincloud)
 

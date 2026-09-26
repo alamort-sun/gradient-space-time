@@ -4,23 +4,28 @@
 //! Capsule content (state events, transitions, JEPA predictions, raw text)
 //! does **not** live here — see SCHEMA.md TODOs. Plane holds leases, grants,
 //! receipts, and manifests.
+//!
+//! Column types are `gradient-plane` newtypes (path dep), not bare u64/hex.
 
-use crate::types::ClosureCode;
+use crate::types::{
+    ActDigest, CapsuleDigest, ClosureCode, LeaseId, ManifestId, PolicyVersion, ReceiptId,
+    SecurityEpoch, SuppressionSpec, Window,
+};
 use spacetimedb::{table, Timestamp};
 
 /// Right to hold/work one trajectory capsule for a bounded window.
 /// Immutable once issued. Carries no trajectory content / no trajectory_id.
 #[table(name = active_leases, public)]
 pub struct ActiveLease {
-    /// Opaque lease id (never reused). Storage stand-in for `LeaseId`.
+    /// Opaque lease id (never reused).
     #[primary_key]
-    pub lease_id: u64,
-    /// sha256 hex of capsule content — binds without storing capsule bytes.
-    pub capsule_digest: String,
+    pub lease_id: LeaseId,
+    /// sha256 of capsule content — binds without storing capsule bytes.
+    pub capsule_digest: CapsuleDigest,
     /// Monotonic policy version.
-    pub policy_version: u32,
+    pub policy_version: PolicyVersion,
     /// Fenced security epoch.
-    pub epoch: u64,
+    pub epoch: SecurityEpoch,
     /// Issue time.
     pub issued_at: Timestamp,
     /// Mandatory expiry — no perpetual leases.
@@ -31,13 +36,13 @@ pub struct ActiveLease {
 /// Durable form is digest-family only (no provider, prompt, cost, request_id).
 #[table(name = signaling_grants, public)]
 pub struct SignalingGrant {
-    /// sha256 hex act digest (primary; one grant per act).
+    /// Act digest (primary; one grant per act).
     #[primary_key]
-    pub act_digest: String,
+    pub act_digest: ActDigest,
     /// Lease this act serves (purpose-scoped equality only).
-    pub lease_ref: u64,
-    pub policy_version: u32,
-    pub epoch: u64,
+    pub lease_ref: LeaseId,
+    pub policy_version: PolicyVersion,
+    pub epoch: SecurityEpoch,
     pub issued_at: Timestamp,
     /// Single-use by construction: expiry <= one act horizon.
     pub expires_at: Timestamp,
@@ -48,11 +53,11 @@ pub struct SignalingGrant {
 #[table(name = closure_receipts, public)]
 pub struct ClosureReceipt {
     #[primary_key]
-    pub receipt_id: u64,
+    pub receipt_id: ReceiptId,
     /// What closed — bound, not described.
-    pub act_digest: String,
+    pub act_digest: ActDigest,
     pub code: ClosureCode,
-    pub epoch: u64,
+    pub epoch: SecurityEpoch,
     pub closed_at: Timestamp,
     /// Bounded retention; deletion event required at expiry (TODO ledger).
     pub retention_until: Timestamp,
@@ -63,17 +68,15 @@ pub struct ClosureReceipt {
 #[table(name = notary_manifests, public)]
 pub struct NotaryManifest {
     #[primary_key]
-    pub manifest_id: u64,
-    /// Window start (inclusive).
-    pub window_start: Timestamp,
-    /// Window length in seconds.
-    pub window_len_secs: u64,
+    pub manifest_id: ManifestId,
+    /// Closed window (start micros + length secs).
+    pub window: Window,
     /// Cohort count (suppressed below floor at emission time).
     pub cohort_count: u32,
     /// Suppression floor applied (R3: 100).
     pub suppression_floor: u32,
-    /// Opaque suppression notes (rare-category / timing / joinability).
-    pub suppression_spec: String,
+    /// Rare-category / timing / joinability notes.
+    pub suppression_spec: SuppressionSpec,
     pub emitted_at: Timestamp,
     /// Deletion complete by this deadline (recorded event — TODO).
     pub ttl_expires: Timestamp,
