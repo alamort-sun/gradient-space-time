@@ -53,21 +53,11 @@ pub fn submit_validated_state(
         codec_version,
         schema_version,
         payload,
-        content_hash: computed_hash.clone(),
-        validation_outcome: ValidationOutcome::Accepted,
+        content_hash: computed_hash,
+        validation_outcome: ClosureCode::Accepted,
         validation_receipt,
         source_type,
     });
-
-    // Update latest trajectory state (upsert by primary key).
-    ctx.db
-        .latest_trajectory_state()
-        .insert(LatestTrajectoryState {
-            trajectory_id,
-            state_id,
-            content_hash: computed_hash,
-            updated_at: ts,
-        });
 
     Ok(())
 }
@@ -144,7 +134,7 @@ pub fn record_generation_result(
     request_id: u64,
     generated_text: Option<String>,
     proposed_state: Option<String>,
-    validation_status: GenerationStatus,
+    validation_status: ClosureCode,
     validation_receipt: String,
 ) -> Result<(), String> {
     // Codec is the law: if proposed_state is present, validate through vecGradient

@@ -35,7 +35,7 @@ pub struct GradientStateEvent {
     /// Content hash (sha256 of payload).
     pub content_hash: String,
     /// Validation outcome.
-    pub validation_outcome: ValidationOutcome,
+    pub validation_outcome: ClosureCode,
     /// Validation receipt / reason code.
     pub validation_receipt: String,
     /// Source type / provenance.
@@ -91,19 +91,6 @@ pub struct ValidationReceipt {
     pub reason_code: String,
     /// Timestamp.
     pub timestamp: Timestamp,
-}
-
-/// Optional materialized current-state view.
-#[table(name = latest_trajectory_state, public)]
-pub struct LatestTrajectoryState {
-    #[primary_key]
-    pub trajectory_id: u64,
-    /// Latest state ID.
-    pub state_id: u64,
-    /// Content hash of latest state.
-    pub content_hash: String,
-    /// Updated timestamp.
-    pub updated_at: Timestamp,
 }
 
 /// Bounded materialized summaries.
@@ -198,7 +185,7 @@ pub struct GenerationResult {
     /// Proposed output state (serialized Vector15D).
     pub proposed_state: Option<String>,
     /// Codec validation status.
-    pub validation_status: GenerationStatus,
+    pub validation_status: ClosureCode,
     /// Validation receipt.
     pub validation_receipt: String,
     /// Completed timestamp.

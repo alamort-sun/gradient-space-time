@@ -85,10 +85,14 @@ impl GaugeCouplingColumn {
     }
 }
 
-/// Validation outcome for a persisted state.
+/// Closure disposition for a validated state or generation result.
+///
+/// Single enum for both `gradient_state_events.validation_outcome` and
+/// `generation_results.validation_status` (formerly ValidationOutcome /
+/// GenerationStatus).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, SpacetimeType)]
-#[sats(name = "ValidationOutcome")]
-pub enum ValidationOutcome {
+#[sats(name = "ClosureCode")]
+pub enum ClosureCode {
     #[default]
     Accepted,
     Rerouted,
@@ -106,17 +110,6 @@ pub enum SourceType {
     Predicted,
     Synthetic,
     Replayed,
-}
-
-/// Disposition of a generation result.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, SpacetimeType)]
-#[sats(name = "GenerationStatus")]
-pub enum GenerationStatus {
-    #[default]
-    Accepted,
-    Rerouted,
-    Abstained,
-    Rejected,
 }
 
 /// Codec schema version for persisted Vector15D payloads.

@@ -29,7 +29,7 @@ Poles are **not** seat-owned. Anaseos ivory-blue is DECLARED colour/spectrum onl
 | schema_version | String | Schema version |
 | payload | String | Canonical Vector15D (serialized JSON) |
 | content_hash | String | sha256 of payload |
-| validation_outcome | ValidationOutcome | Accepted / Rerouted / Abstained / Rejected |
+| validation_outcome | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
 | validation_receipt | String | Reason code / receipt |
 | source_type | SourceType | Observed / Generated / Predicted / Synthetic / Replayed |
 
@@ -71,17 +71,6 @@ Codec commit/version, outcome, invariant info.
 | is_valid | bool | Whether validation passed |
 | reason_code | String | Reason code |
 | timestamp | Timestamp | When validated |
-
-### latest_trajectory_state
-
-Optional materialized current-state view.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| trajectory_id | u64 (PK) | Trajectory ID |
-| state_id | u64 | Latest state ID |
-| content_hash | String | Content hash of latest state |
-| updated_at | Timestamp | When updated |
 
 ### trajectory_summaries
 
@@ -151,7 +140,7 @@ External result records with codec validation status.
 | request_id | u64 | Original request |
 | generated_text | Option\<String\> | Generated text |
 | proposed_state | Option\<String\> | Proposed output state |
-| validation_status | GenerationStatus | Accepted / Rerouted / Abstained / Rejected |
+| validation_status | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
 | validation_receipt | String | Validation receipt |
 | completed_at | Timestamp | When completed |
 
@@ -177,14 +166,13 @@ What was reduced, retained, expired, or summarized.
 ### GaugeCoupling
 `Static` | `Spinning` | `Oscillating`
 
-### ValidationOutcome
+### ClosureCode
 `Accepted` | `Rerouted` | `Abstained` | `Rejected`
+
+(Unified former `ValidationOutcome` / `GenerationStatus`.)
 
 ### SourceType
 `Observed` | `Generated` | `Predicted` | `Synthetic` | `Replayed`
-
-### GenerationStatus
-`Accepted` | `Rerouted` | `Abstained` | `Rejected`
 
 ## Personality ledgers (live on gray-fog maincloud)
 

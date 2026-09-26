@@ -26,7 +26,7 @@ pub fn submit_validated_state(
 ) -> Result<(), String>
 ```
 
-Inserts into `gradient_state_events` and updates `latest_trajectory_state`.
+Inserts into `gradient_state_events`.
 
 ## record_transition
 
@@ -90,7 +90,7 @@ pub fn record_generation_result(
     request_id: u64,
     generated_text: Option<String>,
     proposed_state: Option<String>,
-    validation_status: GenerationStatus,
+    validation_status: ClosureCode,
     validation_receipt: String,
 )
 ```
