@@ -4,8 +4,8 @@
 //! opaque blobs. Every persisted valid state carries provenance and a
 //! validation receipt.
 
-use spacetimedb::table;
 use crate::types::*;
+use spacetimedb::{table, Timestamp};
 
 /// Immutable codec-valid Vector15D state events.
 ///
@@ -118,9 +118,9 @@ pub struct TrajectorySummary {
     /// Average coherence.
     pub avg_coherence: f64,
     /// Domain wall state (constant per trajectory if Linked throughout).
-    pub domain_wall: DomainWall,
+    pub domain_wall: DomainWallColumn,
     /// Gauge coupling mode.
-    pub gauge_coupling: GaugeCoupling,
+    pub gauge_coupling: GaugeCouplingColumn,
     /// Average hue.
     pub avg_hue: f64,
     /// Updated timestamp.

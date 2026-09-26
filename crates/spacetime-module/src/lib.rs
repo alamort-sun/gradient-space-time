@@ -16,4 +16,5 @@
 
 pub mod types;
 pub mod tables;
+pub mod validation;
 pub mod reducers;

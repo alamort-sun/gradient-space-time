@@ -1,0 +1,19 @@
+[package]
+name = "gradient-space-time"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "SpacetimeDB module for gradient-space-time"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+spacetimedb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = "0.4"
+# Authority for the canonical Vector15D categorical types + validation law.
+vecGradient = { workspace = true }
+sha2 = { workspace = true }

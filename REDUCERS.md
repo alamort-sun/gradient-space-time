@@ -6,6 +6,11 @@ Reducers are the transaction boundary and the **only** mechanism for table mutat
 
 Accept canonical state + codec validation receipt.
 
+Gate (P0.1 sealed): deserialize `payload` → `Vector15D::validate()` (codec
+authority via `vecGradient`) → sha256 content hash. Commits only on pass;
+`Err` aborts the SpacetimeDB transaction (no silent accept). Provided
+`content_hash` must equal `sha256(payload)` hex.
+
 ```rust
 #[reducer]
 pub fn submit_validated_state(
@@ -13,12 +18,12 @@ pub fn submit_validated_state(
     trajectory_id: u64,
     sequence_number: u64,
     payload: String,          // canonical Vector15D (serialized JSON)
-    content_hash: String,    // sha256 of payload
+    content_hash: String,    // sha256 of payload (must match)
     codec_version: String,    // codec commit hash
     schema_version: String,
     validation_receipt: String,
     source_type: SourceType,
-)
+) -> Result<(), String>
 ```
 
 Inserts into `gradient_state_events` and updates `latest_trajectory_state`.
