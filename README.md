@@ -45,13 +45,10 @@ Reducers are the transaction boundary and the **only** mechanism for table mutat
 
 | Reducer | Purpose |
 |---------|---------|
-| `submit_validated_state` | Accept canonical state + codec validation receipt |
-| `record_transition` | Create explicit x_t → x_t+1 transition metadata |
-| `record_jepa_prediction` | Store non-authoritative prediction, confidence |
-| `enqueue_generation_request` | Create durable request with budget ceiling |
-| `record_generation_result` | Receive worker result, validate through codec |
-| `compact_trajectory` | Reproducible compaction record and summary |
-| `update_trajectory_summary` | Bounded materialized indicators |
+| `issue_active_lease` | Issue plane lease bound to capsule digest |
+| `issue_signaling_grant` | Single-use act grant under a lease |
+| `record_closure_receipt` | Append closure code for an act digest |
+| `emit_notary_manifest` | Bounded aggregate manifest over a receipt window |
 
 ## Tables
 

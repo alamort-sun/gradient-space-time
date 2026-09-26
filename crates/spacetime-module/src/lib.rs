@@ -1,4 +1,8 @@
-//! gradient-space-time: SpacetimeDB module for durable Vector15D trajectory persistence.
+//! gradient-space-time: SpacetimeDB module for plane-safe lease / grant /
+//! receipt / manifest persistence (Saraswati A2).
+//!
+//! Trajectory biography tables and the `trajectory_id` master key are gone.
+//! Capsule content is out of scope here (see SCHEMA.md TODOs).
 //!
 //! Reducers are the transaction boundary and the ONLY mechanism for table mutation.
 //! Keep reducers deterministic, bounded, side-effect-free.

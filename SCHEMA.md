@@ -1,186 +1,136 @@
-# Schema — gradient-space-time
+# Schema — gradient-space-time (Saraswati A2 plane)
 
-## Tables
+Plane-safe SpacetimeDB schema. **Four coordinator objects.** The former
+11-table biography set and its `trajectory_id` master key are deleted.
+Capsule content does not live on the plane.
 
-### gradient_state_events
+Authority: `agent/specs/p1-codec-schema-lane-saraswati.md` §2–§3;
+`agent/specs/susano-dry-audit-v13.md` (delete joinable fields; do not sprout
+object-types on the same join key).
 
-Immutable codec-valid Vector15D state events.
+Storage stand-ins: opaque `u64` / hex digests until codec newtypes
+(`LeaseId`, `ActDigest`, `ReceiptId`, `ManifestId`, …) land in
+`gradient-codec`. Equality is purpose-scoped (`lease_ref` / `act_digest`) —
+there is no master key.
 
-### Vector15D payload (codec law)
+## Plane tables (4)
 
-Persisted `payload` JSON is **Vector15D**. Fields 1–13 retain prior semantics. Fields 14–15:
+### active_leases (`ActiveLease`)
 
-| Field | Semantics |
-|-------|-----------|
-| `magnetic_north` | Universal polar pre-stress (north) — shared by all shells |
-| `magnetic_south` | Universal polar pre-stress (south) — shared by all shells |
-
-Poles are **not** seat-owned. Anaseos ivory-blue is DECLARED colour/spectrum only. Serde defaults missing poles to `0.0`. Prefer `codec_schema_version` / `schema_version` = `v15d`.
-
-
-
-| Column | Type | Description |
-|--------|------|-------------|
-| state_id | u64 (PK) | Unique state ID |
-| trajectory_id | u64 | Trajectory ID |
-| sequence_number | u64 | Logical sequence within trajectory |
-| event_timestamp | Timestamp | When event was committed |
-| codec_version | String | Codec commit hash |
-| schema_version | String | Schema version |
-| payload | String | Canonical Vector15D (serialized JSON) |
-| content_hash | String | sha256 of payload |
-| validation_outcome | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
-| validation_receipt | String | Reason code / receipt |
-| source_type | SourceType | Observed / Generated / Predicted / Synthetic / Replayed |
-
-### state_transitions
-
-Explicit x_t → x_t+1 records.
+Right to hold/work one trajectory capsule for a bounded window. Immutable
+once issued. No trajectory content, no principal, no seat.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| transition_id | u64 (PK) | Unique transition ID |
-| from_state_id | u64 | Predecessor state |
-| to_state_id | u64 | Successor state |
-| trajectory_id | u64 | Trajectory ID |
-| timestamp | Timestamp | When transition was recorded |
+| lease_id | u64 (PK) | Opaque lease id (never reused) |
+| capsule_digest | String | sha256 hex of capsule content — binds without storing |
+| policy_version | u32 | Monotonic policy version |
+| epoch | u64 | Fenced security epoch |
+| issued_at | Timestamp | Issue time |
+| expires_at | Timestamp | Mandatory expiry — no perpetual leases |
 
-### trajectories
+Consume/expiry state is **not** a mutable field here (TODO: no-rewind
+consume ledger keyed by `lease_id`).
 
-Metadata and root/terminal references.
+### signaling_grants (`SignalingGrant`)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| trajectory_id | u64 (PK) | Trajectory ID |
-| root_state_id | Option\<u64\> | First state (None if not yet set) |
-| terminal_state_id | Option\<u64\> | Last state (None if open) |
-| is_closed | bool | Whether trajectory is closed |
-| created_at | Timestamp | Creation time |
-| closure | f64 | Cycle completeness (0.0 - 1.0) |
-
-### validation_receipts
-
-Codec commit/version, outcome, invariant info.
+Authorization for exactly one external signaling act. Digest-family only.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| receipt_id | u64 (PK) | Receipt ID |
-| state_id | u64 | State validated |
-| codec_commit | String | Codec commit hash |
-| codec_schema_version | String | Codec schema version |
-| is_valid | bool | Whether validation passed |
-| reason_code | String | Reason code |
-| timestamp | Timestamp | When validated |
+| act_digest | String (PK) | sha256 hex over normalized act commitment |
+| lease_ref | u64 | Lease this act serves |
+| policy_version | u32 | Policy version |
+| epoch | u64 | Security epoch |
+| issued_at | Timestamp | Issue time |
+| expires_at | Timestamp | Single-use horizon |
 
-### trajectory_summaries
+No provider identity, prompt text, token counts, costs, or `request_id`.
 
-Bounded materialized summaries.
+### closure_receipts (`ClosureReceipt`)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| trajectory_id | u64 (PK) | Trajectory ID |
-| state_count | u64 | Number of states |
-| avg_entropy | f64 | Average entropy |
-| avg_coherence | f64 | Average coherence |
-| domain_wall | DomainWall | Connection state |
-| gauge_coupling | GaugeCoupling | Rotation mode |
-| avg_hue | f64 | Average hue |
-| updated_at | Timestamp | When updated |
-
-### jepa_predictions
-
-Non-authoritative model predictions.
+Append-only, bounded-retention record that an act closed with a code.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| prediction_id | u64 (PK) | Prediction ID |
-| input_state_hash | String | Input state hash |
-| model_version | String | Model version |
-| predicted_representation | String | Predicted state (serialized) |
-| confidence | f64 | Confidence (0.0 - 1.0) |
-| uncertainty | f64 | Uncertainty estimate |
-| is_authoritative | bool | Always false |
-| timestamp | Timestamp | When predicted |
+| receipt_id | u64 (PK) | Opaque receipt id |
+| act_digest | String | What closed — bound, not described |
+| code | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
+| epoch | u64 | Security epoch |
+| closed_at | Timestamp | Close time |
+| retention_until | Timestamp | Bounded retention deadline |
 
-### routing_decisions
+No state IDs, raw text, provider, or `trajectory_id`.
 
-MoE decision records.
+### notary_manifests (`NotaryManifest`)
 
-| Column | Type | Description |
-|--------|------|-------------|
-| routing_id | u64 (PK) | Routing ID |
-| selected_expert | String | Selected provider |
-| budget_snapshot | String | Budget state snapshot |
-| rationale_code | String | Routing rationale |
-| request_id | Option\<u64\> | Generation request linkage |
-| result_outcome | String | Result outcome |
-| timestamp | Timestamp | When routed |
-
-### generation_requests
-
-Durable work-intent queue for external workers.
+Manifest over a closed window of receipts (analytics/export crossing).
+Compaction history folds in as manifest lines + tombstones (TODO), not a
+`compaction_records` row keyed by `trajectory_id`.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| request_id | u64 (PK) | Request ID |
-| input_state_id | u64 | Input state |
-| budget_ceiling | f64 | Budget ceiling (USD) |
-| latency_requirement_ms | Option\<u32\> | Latency requirement |
-| request_type | String | Request type |
-| status | String | pending / in_progress / complete / failed |
-| created_at | Timestamp | When created |
-
-### generation_results
-
-External result records with codec validation status.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| result_id | u64 (PK) | Result ID |
-| request_id | u64 | Original request |
-| generated_text | Option\<String\> | Generated text |
-| proposed_state | Option\<String\> | Proposed output state |
-| validation_status | ClosureCode | Accepted / Rerouted / Abstained / Rejected |
-| validation_receipt | String | Validation receipt |
-| completed_at | Timestamp | When completed |
-
-### compaction_records
-
-What was reduced, retained, expired, or summarized.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| compaction_id | u64 (PK) | Compaction ID |
-| trajectory_id | u64 | Trajectory compacted |
-| states_before | u64 | States before compaction |
-| states_after | u64 | States after compaction |
-| retained_summary | String | What was retained |
-| expired_summary | String | What was expired |
-| timestamp | Timestamp | When compacted |
+| manifest_id | u64 (PK) | Fresh id per window (never reused) |
+| window_start | Timestamp | Window start |
+| window_len_secs | u64 | Window length (R3 default 86400) |
+| cohort_count | u32 | Suppressed below floor at emission |
+| suppression_floor | u32 | R3 floor (100) |
+| suppression_spec | String | Rare-category / timing / joinability notes |
+| emitted_at | Timestamp | Emission time |
+| ttl_expires | Timestamp | Deletion-complete deadline (R3 external TTL 604800) |
 
 ## Enums
-
-### DomainWall
-`Linked` | `Broken` | `Gradient`
-
-### GaugeCoupling
-`Static` | `Spinning` | `Oscillating`
 
 ### ClosureCode
 `Accepted` | `Rerouted` | `Abstained` | `Rejected`
 
 (Unified former `ValidationOutcome` / `GenerationStatus`.)
 
-### SourceType
-`Observed` | `Generated` | `Predicted` | `Synthetic` | `Replayed`
+## Deleted biography set (disposition)
+
+| Former table | Disposition |
+|---|---|
+| `gradient_state_events` | **moved out** → capsule under `ActiveLease` (TODO capsule crate) |
+| `state_transitions` | **moved out** → capsule |
+| `trajectories` | **replaced** by `active_leases` |
+| `validation_receipts` | **replaced** by `closure_receipts` |
+| `latest_trajectory_state` | **deleted** (B1) |
+| `trajectory_summaries` | **replaced** by `notary_manifests` |
+| `jepa_predictions` | **moved out** → research capsule (TODO) |
+| `routing_decisions` | **replaced** by `signaling_grants` + `closure_receipts` |
+| `generation_requests` | **replaced** by ephemeral grant (no durable work queue) |
+| `generation_results` | **replaced** by `closure_receipts` (`generated_text` → capsule or drop) |
+| `compaction_records` | **replaced** by manifest lines + tombstones under `notary_manifests` |
+
+`trajectory_id` is **gone** from schema and reducers.
+
+## TODOs (blockers for full A2 / B2)
+
+1. **Capsule crate / runtime** — holds state events, transitions, JEPA,
+   raw egress under a lease; plane only stores `capsule_digest`.
+2. **Codec newtypes** — `LeaseId` / `ActDigest` / `PolicyVersion` /
+   `SecurityEpoch` / `ReceiptId` / `ManifestId` / `Window` /
+   `SuppressionSpec` in `gradient-codec` (space-time currently uses
+   storage stand-ins).
+3. **Epoch root fencing** — reject writes whose `epoch` ≠ current root.
+4. **Lease consume ledger** — no-rewind consume/expiry rows keyed by
+   `lease_id` (not a mutable field on `ActiveLease`).
+5. **Manifest tombstones / deletion-complete events** — R3 deletion
+   recorded, not silent drop.
+6. **B2 dual-write** — legacy frozen → readers cut over → drop (precondition:
+   pins + single canonical module tree; tree drift already resolved).
+7. **A5 CI** — deny-list scan for `trajectory_id`, `trace_id`,
+   `prompt_hash`, `generated_text` on plane tables.
 
 ## Personality ledgers (live on gray-fog maincloud)
 
-Agent personality for jelle seats is **not** stored in this scaffold module yet.
+Agent personality for jelle seats is **not** stored in this module.
 It lives on SpacetimeDB **maincloud** database `gray-fog` (sun-dance memory):
 
 - **Federated** — keyed by `seat_id`
 - **Timestamped** — `agent_memory_5d` append history
 - **Lossy mutable** — `agent_memory_4d` replace/merge spine + `agent_memory_6d` fading cache
 
-Jelle-serve pulls/pushes `personality:<seat>` there. Codec-valid Vector15D trajectories remain this repo's concern.
+Jelle-serve pulls/pushes `personality:<seat>` there. Codec-valid Vector15D
+geometry remains the codec crate's concern; this module no longer persists
+trajectory biographies.

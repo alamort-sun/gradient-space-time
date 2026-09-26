@@ -1,212 +1,80 @@
-//! SpacetimeDB table definitions.
+//! SpacetimeDB table definitions — Saraswati A2 plane objects only.
 //!
-//! Favor append-only state events with explicit provenance over mutable
-//! opaque blobs. Every persisted valid state carries provenance and a
-//! validation receipt.
+//! Biography set (11 tables keyed by `trajectory_id` / request chains) deleted.
+//! Capsule content (state events, transitions, JEPA predictions, raw text)
+//! does **not** live here — see SCHEMA.md TODOs. Plane holds leases, grants,
+//! receipts, and manifests.
 
-use crate::types::*;
+use crate::types::ClosureCode;
 use spacetimedb::{table, Timestamp};
 
-/// Immutable codec-valid Vector15D state events.
-///
-/// Every persisted valid state carries:
-/// state ID · trajectory ID · logical sequence number
-/// · event timestamp · codec version/commit · schema version
-/// · canonical payload · content hash
-/// · validation outcome · validation receipt / reason code
-/// · source type / provenance
-#[table(name = gradient_state_events, public)]
-pub struct GradientStateEvent {
-    /// Unique state ID.
+/// Right to hold/work one trajectory capsule for a bounded window.
+/// Immutable once issued. Carries no trajectory content / no trajectory_id.
+#[table(name = active_leases, public)]
+pub struct ActiveLease {
+    /// Opaque lease id (never reused). Storage stand-in for `LeaseId`.
     #[primary_key]
-    pub state_id: u64,
-    /// Trajectory ID (group of related states).
-    pub trajectory_id: u64,
-    /// Logical sequence number within trajectory.
-    pub sequence_number: u64,
-    /// Event timestamp.
-    pub event_timestamp: Timestamp,
-    /// Codec version/commit hash.
-    pub codec_version: String,
-    /// Schema version.
-    pub schema_version: String,
-    /// Canonical Vector15D payload (serialized).
-    pub payload: String,
-    /// Content hash (sha256 of payload).
-    pub content_hash: String,
-    /// Validation outcome.
-    pub validation_outcome: ClosureCode,
-    /// Validation receipt / reason code.
-    pub validation_receipt: String,
-    /// Source type / provenance.
-    pub source_type: SourceType,
+    pub lease_id: u64,
+    /// sha256 hex of capsule content — binds without storing capsule bytes.
+    pub capsule_digest: String,
+    /// Monotonic policy version.
+    pub policy_version: u32,
+    /// Fenced security epoch.
+    pub epoch: u64,
+    /// Issue time.
+    pub issued_at: Timestamp,
+    /// Mandatory expiry — no perpetual leases.
+    pub expires_at: Timestamp,
 }
 
-/// Explicit x_t → x_t+1 transition records.
-#[table(name = state_transitions, public)]
-pub struct StateTransition {
+/// Authorization for exactly one external signaling act.
+/// Durable form is digest-family only (no provider, prompt, cost, request_id).
+#[table(name = signaling_grants, public)]
+pub struct SignalingGrant {
+    /// sha256 hex act digest (primary; one grant per act).
     #[primary_key]
-    pub transition_id: u64,
-    /// Predecessor state ID.
-    pub from_state_id: u64,
-    /// Successor state ID.
-    pub to_state_id: u64,
-    /// Trajectory ID.
-    pub trajectory_id: u64,
-    /// Transition timestamp.
-    pub timestamp: Timestamp,
+    pub act_digest: String,
+    /// Lease this act serves (purpose-scoped equality only).
+    pub lease_ref: u64,
+    pub policy_version: u32,
+    pub epoch: u64,
+    pub issued_at: Timestamp,
+    /// Single-use by construction: expiry <= one act horizon.
+    pub expires_at: Timestamp,
 }
 
-/// Trajectory metadata and root/terminal references.
-#[table(name = trajectories, public)]
-pub struct Trajectory {
-    #[primary_key]
-    pub trajectory_id: u64,
-    /// Root state ID (first state in trajectory).
-    pub root_state_id: Option<u64>,
-    /// Terminal state ID (last state, if closed).
-    pub terminal_state_id: Option<u64>,
-    /// Whether the trajectory is closed.
-    pub is_closed: bool,
-    /// Created timestamp.
-    pub created_at: Timestamp,
-    /// Closure value (0.0 - 1.0).
-    pub closure: f64,
-}
-
-/// Codec commit/version, outcome, invariant info.
-#[table(name = validation_receipts, public)]
-pub struct ValidationReceipt {
+/// Append-only, bounded-retention record that an act closed with a code.
+/// No state IDs, text, provider, or trajectory_id.
+#[table(name = closure_receipts, public)]
+pub struct ClosureReceipt {
     #[primary_key]
     pub receipt_id: u64,
-    /// State ID validated.
-    pub state_id: u64,
-    /// Codec commit hash.
-    pub codec_commit: String,
-    /// Codec schema version.
-    pub codec_schema_version: String,
-    /// Whether validation passed.
-    pub is_valid: bool,
-    /// Reason code.
-    pub reason_code: String,
-    /// Timestamp.
-    pub timestamp: Timestamp,
+    /// What closed — bound, not described.
+    pub act_digest: String,
+    pub code: ClosureCode,
+    pub epoch: u64,
+    pub closed_at: Timestamp,
+    /// Bounded retention; deletion event required at expiry (TODO ledger).
+    pub retention_until: Timestamp,
 }
 
-/// Bounded materialized summaries.
-#[table(name = trajectory_summaries, public)]
-pub struct TrajectorySummary {
+/// Manifest over a closed window of receipts (analytics/export crossing).
+/// Compaction history folds in here — not a trajectory_id-keyed row.
+#[table(name = notary_manifests, public)]
+pub struct NotaryManifest {
     #[primary_key]
-    pub trajectory_id: u64,
-    /// Number of states.
-    pub state_count: u64,
-    /// Average entropy across trajectory.
-    pub avg_entropy: f64,
-    /// Average coherence.
-    pub avg_coherence: f64,
-    /// Domain wall state (constant per trajectory if Linked throughout).
-    pub domain_wall: DomainWallColumn,
-    /// Gauge coupling mode.
-    pub gauge_coupling: GaugeCouplingColumn,
-    /// Average hue.
-    pub avg_hue: f64,
-    /// Updated timestamp.
-    pub updated_at: Timestamp,
-}
-
-/// Non-authoritative JEPA predictions.
-#[table(name = jepa_predictions, public)]
-pub struct JepaPrediction {
-    #[primary_key]
-    pub prediction_id: u64,
-    /// Input state hash.
-    pub input_state_hash: String,
-    /// Model version.
-    pub model_version: String,
-    /// Predicted representation (serialized).
-    pub predicted_representation: String,
-    /// Confidence (0.0 - 1.0).
-    pub confidence: f64,
-    /// Uncertainty estimate.
-    pub uncertainty: f64,
-    /// Explicitly non-authoritative.
-    pub is_authoritative: bool, // always false
-    /// Timestamp.
-    pub timestamp: Timestamp,
-}
-
-/// MoE routing decisions.
-#[table(name = routing_decisions, public)]
-pub struct RoutingDecisionRecord {
-    #[primary_key]
-    pub routing_id: u64,
-    /// Selected expert/provider.
-    pub selected_expert: String,
-    /// Budget snapshot.
-    pub budget_snapshot: String,
-    /// Rationale code.
-    pub rationale_code: String,
-    /// Request linkage (generation request ID, if any).
-    pub request_id: Option<u64>,
-    /// Result outcome.
-    pub result_outcome: String,
-    /// Timestamp.
-    pub timestamp: Timestamp,
-}
-
-/// Durable work-intent queue for external workers.
-#[table(name = generation_requests, public)]
-pub struct GenerationRequest {
-    #[primary_key]
-    pub request_id: u64,
-    /// Input state ID.
-    pub input_state_id: u64,
-    /// Budget ceiling (USD).
-    pub budget_ceiling: f64,
-    /// Latency requirement (ms).
-    pub latency_requirement_ms: Option<u32>,
-    /// Request type.
-    pub request_type: String,
-    /// Status: pending, in_progress, complete, failed.
-    pub status: String,
-    /// Created timestamp.
-    pub created_at: Timestamp,
-}
-
-/// External result records with codec validation status.
-#[table(name = generation_results, public)]
-pub struct GenerationResult {
-    #[primary_key]
-    pub result_id: u64,
-    /// Original generation request ID.
-    pub request_id: u64,
-    /// Generated text (if any).
-    pub generated_text: Option<String>,
-    /// Proposed output state (serialized Vector15D).
-    pub proposed_state: Option<String>,
-    /// Codec validation status.
-    pub validation_status: ClosureCode,
-    /// Validation receipt.
-    pub validation_receipt: String,
-    /// Completed timestamp.
-    pub completed_at: Timestamp,
-}
-
-/// What was reduced, retained, expired, or summarized.
-#[table(name = compaction_records, public)]
-pub struct CompactionRecord {
-    #[primary_key]
-    pub compaction_id: u64,
-    /// Trajectory ID compacted.
-    pub trajectory_id: u64,
-    /// Number of states before compaction.
-    pub states_before: u64,
-    /// Number of states after compaction.
-    pub states_after: u64,
-    /// What was retained.
-    pub retained_summary: String,
-    /// What was expired.
-    pub expired_summary: String,
-    /// Timestamp.
-    pub timestamp: Timestamp,
+    pub manifest_id: u64,
+    /// Window start (inclusive).
+    pub window_start: Timestamp,
+    /// Window length in seconds.
+    pub window_len_secs: u64,
+    /// Cohort count (suppressed below floor at emission time).
+    pub cohort_count: u32,
+    /// Suppression floor applied (R3: 100).
+    pub suppression_floor: u32,
+    /// Opaque suppression notes (rare-category / timing / joinability).
+    pub suppression_spec: String,
+    pub emitted_at: Timestamp,
+    /// Deletion complete by this deadline (recorded event — TODO).
+    pub ttl_expires: Timestamp,
 }

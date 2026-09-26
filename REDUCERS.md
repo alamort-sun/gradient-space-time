@@ -1,139 +1,95 @@
-# Reducers — gradient-space-time
+# Reducers — gradient-space-time (A2 plane)
 
-Reducers are the transaction boundary and the **only** mechanism for table mutation. They are deterministic, bounded, and side-effect-free.
+Reducers are the transaction boundary and the **only** mechanism for table
+mutation. They are deterministic, bounded, and side-effect-free.
 
-## submit_validated_state
+All biography reducers (`submit_validated_state`, `record_transition`,
+`record_jepa_prediction`, `enqueue_generation_request`,
+`record_generation_result`, `compact_trajectory`,
+`update_trajectory_summary`) are **deleted**. No reducer takes
+`trajectory_id`.
 
-Accept canonical state + codec validation receipt.
+Timestamps other than `issued_at` / `closed_at` / `emitted_at` (taken from
+`ctx.timestamp`) arrive as micros-since-unix-epoch arguments.
 
-Gate (P0.1 sealed): deserialize `payload` → `Vector15D::validate()` (codec
-authority via `vecGradient`) → sha256 content hash. Commits only on pass;
-`Err` aborts the SpacetimeDB transaction (no silent accept). Provided
-`content_hash` must equal `sha256(payload)` hex.
+## issue_active_lease
+
+Issue an `ActiveLease` bound to a capsule digest (no capsule bytes on plane).
 
 ```rust
 #[reducer]
-pub fn submit_validated_state(
+pub fn issue_active_lease(
     ctx: &ReducerContext,
-    trajectory_id: u64,
-    sequence_number: u64,
-    payload: String,          // canonical Vector15D (serialized JSON)
-    content_hash: String,    // sha256 of payload (must match)
-    codec_version: String,    // codec commit hash
-    schema_version: String,
-    validation_receipt: String,
-    source_type: SourceType,
+    capsule_digest: String,       // 64-char hex sha256
+    policy_version: u32,
+    epoch: u64,
+    expires_at_micros: i64,       // must be > ctx.timestamp
 ) -> Result<(), String>
 ```
 
-Inserts into `gradient_state_events`.
+Inserts into `active_leases`.
 
-## record_transition
+## issue_signaling_grant
 
-Create explicit transition metadata after validation.
-
-```rust
-#[reducer]
-pub fn record_transition(
-    ctx: &ReducerContext,
-    trajectory_id: u64,
-    from_state_id: u64,
-    to_state_id: u64,
-)
-```
-
-Inserts into `state_transitions`.
-
-## record_jepa_prediction
-
-Store non-authoritative prediction, confidence.
+Issue a single-use `SignalingGrant` for one act under an existing lease.
 
 ```rust
 #[reducer]
-pub fn record_jepa_prediction(
+pub fn issue_signaling_grant(
     ctx: &ReducerContext,
-    input_state_hash: String,
-    model_version: String,
-    predicted_representation: String,
-    confidence: f64,
-    uncertainty: f64,
-)
+    act_digest: String,           // 64-char hex sha256
+    lease_ref: u64,               // must exist in active_leases
+    policy_version: u32,
+    epoch: u64,
+    expires_at_micros: i64,
+) -> Result<(), String>
 ```
 
-Inserts into `jepa_predictions`. The `is_authoritative` field is always `false`.
+Inserts into `signaling_grants`. Fail-closed if `lease_ref` missing.
 
-## enqueue_generation_request
+## record_closure_receipt
 
-Create durable request with budget ceiling.
+Append a `ClosureReceipt` for a closed act (no text / state / trajectory).
 
 ```rust
 #[reducer]
-pub fn enqueue_generation_request(
+pub fn record_closure_receipt(
     ctx: &ReducerContext,
-    input_state_id: u64,
-    budget_ceiling: f64,
-    latency_requirement_ms: Option<u32>,
-    request_type: String,
-)
+    act_digest: String,
+    code: ClosureCode,
+    epoch: u64,
+    retention_until_micros: i64,
+) -> Result<(), String>
 ```
 
-Inserts into `generation_requests` with status "pending".
+Inserts into `closure_receipts`.
 
-## record_generation_result
+## emit_notary_manifest
 
-Receive worker result. Validate through codec.
+Emit a `NotaryManifest` over a closed receipt window. Rejects cohorts below
+the suppression floor (no rare joinable aggregate).
 
 ```rust
 #[reducer]
-pub fn record_generation_result(
+pub fn emit_notary_manifest(
     ctx: &ReducerContext,
-    request_id: u64,
-    generated_text: Option<String>,
-    proposed_state: Option<String>,
-    validation_status: ClosureCode,
-    validation_receipt: String,
-)
+    window_start_micros: i64,
+    window_len_secs: u64,
+    cohort_count: u32,
+    suppression_floor: u32,
+    suppression_spec: String,
+    ttl_expires_micros: i64,
+) -> Result<(), String>
 ```
 
-Inserts into `generation_results`. If the result was accepted and has a proposed state, it should be persisted via `submit_validated_state` after codec validation. TODO: Wire codec validation.
+Inserts into `notary_manifests`.
 
-## compact_trajectory
+## Codec gate (still present)
 
-Reproducible compaction record and summary.
-
-```rust
-#[reducer]
-pub fn compact_trajectory(
-    ctx: &ReducerContext,
-    trajectory_id: u64,
-    states_before: u64,
-    states_after: u64,
-    retained_summary: String,
-    expired_summary: String,
-)
-```
-
-Inserts into `compaction_records`. The compaction itself must be deterministic and reproducible.
-
-## update_trajectory_summary
-
-Bounded materialized indicators.
-
-```rust
-#[reducer]
-pub fn update_trajectory_summary(
-    ctx: &ReducerContext,
-    trajectory_id: u64,
-    state_count: u64,
-    avg_entropy: f64,
-    avg_coherence: f64,
-    domain_wall: DomainWall,
-    gauge_coupling: GaugeCoupling,
-    avg_hue: f64,
-)
-```
-
-Upserts into `trajectory_summaries`.
+`validation::prepare_validated_payload` remains for Vector15D deserialize →
+`validate` → sha256. It is **not** wired to a plane biography insert anymore;
+callers preparing capsule content or act commitments reuse it. Plane reducers
+above only check digest hex shape.
 
 ## What NEVER Goes Inside Reducers
 
@@ -146,5 +102,6 @@ Upserts into `trajectory_summaries`.
 - Filesystem work
 - Unbounded historical scans
 - Non-replayable hidden side effects
+- Writing `trajectory_id`, provider identity, or raw egress text
 
-External workers handle all of the above. Reducers only commit validated results.
+External workers / capsules handle content. Reducers only commit plane objects.
