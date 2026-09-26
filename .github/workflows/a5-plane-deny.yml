@@ -1,0 +1,22 @@
+# A5 — plane-unsafe field deny (Susano dry-audit v13).
+# Deny list mirrors gradient-codec/scripts/ci/a5-plane-deny.sh (canonical).
+# Leaf trigger so space-time PRs gate without waiting on codec CI.
+name: A5 plane-deny
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a5-plane-deny:
+    name: A5 plane-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run deny list
+        run: ./scripts/ci/a5-plane-deny.sh crates
